@@ -1,4 +1,4 @@
-package com.stylefeng.guns.api.user;
+package com.stylefeng.guns.api.user.vo;
 
 
 import com.baomidou.mybatisplus.annotations.TableId;
@@ -8,12 +8,9 @@ import java.io.Serializable;
 
 public class UserInfoModel implements Serializable {
 
-    private static final long serialVersionUID = 1L;
 
-    /**
-     * 主键编号
-     */
-    @TableId(value = "UUID", type = IdType.AUTO)
+
+
     private Integer uuid;
 
 
