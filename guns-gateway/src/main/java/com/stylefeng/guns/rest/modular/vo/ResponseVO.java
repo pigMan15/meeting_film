@@ -18,6 +18,10 @@ public class ResponseVO<M> {
     //图片前缀
     private String imgPre;
 
+    private int nowPage;
+
+    private int totalPage;
+
     public ResponseVO() {
     }
 
@@ -27,6 +31,16 @@ public class ResponseVO<M> {
         responseVO.setStatus(0);
         responseVO.setData(m);
         responseVO.setImgPre(imgPre);
+        return responseVO;
+    }
+
+    public static<M> ResponseVO success(String imgPre,int nowPage, int totalPage, M m){
+        ResponseVO responseVO = new ResponseVO();
+        responseVO.setStatus(0);
+        responseVO.setData(m);
+        responseVO.setImgPre(imgPre);
+        responseVO.setNowPage(nowPage);
+        responseVO.setTotalPage(totalPage);
         return responseVO;
     }
 

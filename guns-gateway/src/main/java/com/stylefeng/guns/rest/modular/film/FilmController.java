@@ -2,31 +2,34 @@ package com.stylefeng.guns.rest.modular.film;
 
 
 import com.alibaba.dubbo.config.annotation.Reference;
+import com.alibaba.dubbo.rpc.RpcContext;
+import com.stylefeng.guns.api.film.FilmAsyncServiceApi;
 import com.stylefeng.guns.api.film.FilmServiceApi;
-import com.stylefeng.guns.api.film.vo.CatVO;
-import com.stylefeng.guns.api.film.vo.SourceVO;
-import com.stylefeng.guns.api.film.vo.YearVO;
+import com.stylefeng.guns.api.film.vo.*;
 import com.stylefeng.guns.rest.modular.film.vo.FilmConditionVO;
 import com.stylefeng.guns.rest.modular.film.vo.FilmIndexVO;
+import com.stylefeng.guns.rest.modular.film.vo.FilmRequestVO;
 import com.stylefeng.guns.rest.modular.vo.ResponseVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.Banner;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 @RequestMapping(value = "/film/")
 @RestController
 public class FilmController {
 
-    private static final String  imgPre = "http://wwww.meeting_film.com/";
+    private static final String  imgPre = "http://img.meetingshop.cn/";
 
     @Reference(interfaceClass = FilmServiceApi.class)
     private FilmServiceApi filmServiceApi;
+
+    @Reference(interfaceClass = FilmAsyncServiceApi.class,async = true)
+    private FilmAsyncServiceApi filmAsyncServiceApi;
 
     @RequestMapping(value = "getIndex", method = RequestMethod.GET)
     public ResponseVO<FilmIndexVO> getIndex(){
@@ -34,8 +37,8 @@ public class FilmController {
 
         FilmIndexVO filmIndexVO = new FilmIndexVO();
         filmIndexVO.setBanners(filmServiceApi.getBanners());
-        filmIndexVO.setHotFilms(filmServiceApi.getHotFilms(true,8));
-        filmIndexVO.setSoonFilms(filmServiceApi.getSoonFilms(true,8));
+        filmIndexVO.setHotFilms(filmServiceApi.getHotFilms(true,8,1,1,99,99,99));
+        filmIndexVO.setSoonFilms(filmServiceApi.getSoonFilms(true,8,1,1,99,99,99));
         filmIndexVO.setBoxRanking(filmServiceApi.getBoxRanking());
         filmIndexVO.setExpectRanking(filmServiceApi.getExpectRanking());
         filmIndexVO.setTop100(filmServiceApi.getTop());
@@ -145,5 +148,82 @@ public class FilmController {
         return ResponseVO.success(filmConditionVO);
 
     }
+
+
+
+    @RequestMapping(value = "getFilms",method = RequestMethod.GET)
+    public ResponseVO getFilms(FilmRequestVO filmRequestVO) {
+        FilmVO filmVO = null;
+        switch (filmRequestVO.getShowType()) {
+            case 1:
+                filmVO = filmServiceApi.getHotFilms(false, filmRequestVO.getPageSize(), filmRequestVO.getNowPage(), filmRequestVO.getSortId(), filmRequestVO.getSourceId(), filmRequestVO.getYearId(), filmRequestVO.getCatId());
+                break;
+            case 2:
+                filmVO = filmServiceApi.getSoonFilms(false, filmRequestVO.getPageSize(), filmRequestVO.getNowPage(), filmRequestVO.getSortId(), filmRequestVO.getSourceId(), filmRequestVO.getYearId(), filmRequestVO.getCatId());
+                break;
+            case 3:
+                filmVO = filmServiceApi.getClassicFilms(filmRequestVO.getPageSize(), filmRequestVO.getNowPage(), filmRequestVO.getSortId(), filmRequestVO.getSourceId(), filmRequestVO.getYearId(), filmRequestVO.getCatId());
+                break;
+            default:
+                filmVO = filmServiceApi.getHotFilms(false, filmRequestVO.getPageSize(), filmRequestVO.getNowPage(), filmRequestVO.getSortId(), filmRequestVO.getSourceId(), filmRequestVO.getYearId(), filmRequestVO.getCatId());
+                break;
+        }
+        return ResponseVO.success(imgPre,filmVO.getNowPage(),filmVO.getTotalPage(),filmVO.getFilmInfo());
+    }
+
+
+    @RequestMapping(value = "films/{searchParam}",method = RequestMethod.GET)
+    public ResponseVO films(@PathVariable("searchParam") String searchParam,int searchType) throws ExecutionException, InterruptedException {
+        //根据searchType,判断查询类型
+
+        FilmDetailVO filmDetailVO = filmServiceApi.getFilmDetail(searchType,searchParam);
+
+        if(filmDetailVO == null){
+            return ResponseVO.serviceFail("没有可查询的影片");
+        }else if(filmDetailVO.getFilmId() == null || filmDetailVO.getFilmId().trim().length() == 0){
+            return ResponseVO.serviceFail("没有可查询的影片");
+        }
+
+        //不同的查询类型，传入条件不一样
+
+        //查询影片的详细信息 Dubbo异步获取
+        String filmId = filmDetailVO.getFilmId();
+
+
+        //获取影片描述信息
+//        FilmDescVO filmDescVO = filmAsyncServiceApi.getFilmDesc(filmId);
+        filmAsyncServiceApi.getFilmDesc(filmId);
+        Future<FilmDescVO> filmDescVOFuture = RpcContext.getContext().getFuture();
+
+        //获取图片信息
+        filmAsyncServiceApi.getImgs(filmId);
+        Future<ImgVO> imgVOFuture = RpcContext.getContext().getFuture();
+        //获取导演信息
+        filmAsyncServiceApi.getDectInfo(filmId);
+        Future<ActorVO> directorVOFuture = RpcContext.getContext().getFuture();
+
+        //获取演员信息
+        filmAsyncServiceApi.getActors(filmId);
+        Future<List<ActorVO>> actorsVOFuture = RpcContext.getContext().getFuture();
+
+
+        //组织Info属性
+        InfoRequestVO infoRequestVO = new InfoRequestVO();
+
+        //组织Actor属性
+        ActorRequestVO actorRequestVO = new ActorRequestVO();
+        actorRequestVO.setActors(actorsVOFuture.get());
+        actorRequestVO.setDirector(directorVOFuture.get());
+
+        infoRequestVO.setActors(actorRequestVO);
+        infoRequestVO.setImgVO(imgVOFuture.get());
+        infoRequestVO.setFilmId(filmId);
+        infoRequestVO.setBiography(filmDescVOFuture.get().getBiography());
+
+        filmDetailVO.setInfo04(infoRequestVO);
+
+        return ResponseVO.success(imgPre,filmDetailVO);
+    }
+
 
 }
