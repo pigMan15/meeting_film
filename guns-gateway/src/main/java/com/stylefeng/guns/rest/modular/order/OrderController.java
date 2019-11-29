@@ -13,6 +13,9 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Slf4j
 @RestController
 @RequestMapping(value = "/order/")
@@ -20,8 +23,27 @@ public class OrderController {
 
     private static final String  imgPre = "http://img.meetingshop.cn/";
 
-    @Reference(interfaceClass = OrderServiceAPI.class)
+    @Reference(
+            interfaceClass = OrderServiceAPI.class,
+            check = false,
+            group = "order2019"
+    )
     private OrderServiceAPI orderServiceAPI;
+
+    @Reference(
+            interfaceClass = OrderServiceAPI.class,
+            check = false,
+            group = "order2018"
+    )
+    private OrderServiceAPI orderServiceAPI2018;
+
+    @Reference(
+            interfaceClass = OrderServiceAPI.class,
+            check = false,
+            group = "order2017"
+    )
+    private OrderServiceAPI orderServiceAPI2017;
+
 
     @RequestMapping(value = "buyTickets",method = RequestMethod.POST)
     public ResponseVO buyTickets(Integer fieldId, String soldSeats, String seatsName){
@@ -72,7 +94,19 @@ public class OrderController {
         Page<OrderVO> page = new Page<>(nowPage,pageSize);
         if(userId != null && userId.trim().length() > 0){
             Page<OrderVO> result = orderServiceAPI.getOrderByUserId(Integer.valueOf(userId),page);
-            return ResponseVO.success(imgPre,nowPage,(int)result.getPages(),result.getRecords());
+
+            Page<OrderVO> result2017 = orderServiceAPI2017.getOrderByUserId(Integer.valueOf(userId),page);
+
+            Page<OrderVO> result2018 = orderServiceAPI2018.getOrderByUserId(Integer.valueOf(userId),page);
+
+            int totalPages = (int) (result.getPages() + result2017.getPages()+ result2018.getPages());
+
+            List<OrderVO> orderVOList = new ArrayList<>();
+            orderVOList.addAll(result.getRecords());
+            orderVOList.addAll(result2017.getRecords());
+            orderVOList.addAll(result2018.getRecords());
+
+            return ResponseVO.success(imgPre,nowPage,totalPages,orderVOList);
         }else{
             return ResponseVO.serviceFail("用户未登录");
         }
